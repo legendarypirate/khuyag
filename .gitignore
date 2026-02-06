@@ -1,0 +1,97 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.lcov
+.nyc_output
+
+# Next.js
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Production
+/build
+/dist
+
+# Misc
+.DS_Store
+*.pem
+*.log
+*.lock
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Local env files
+.env
+.env*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE - VSCode
+.vscode/
+*.code-workspace
+.idea/
+*.swp
+*.swo
+*~
+
+# IDE - Other
+.sublime-project
+.sublime-workspace
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# Uploaded assets (uncomment if you don't want to track uploaded files)
+# task/app/assets/
+# ecommerce-backoffice/public/uploads/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Package manager locks (uncomment if you want to ignore lock files)
+# package-lock.json
+# pnpm-lock.yaml
+# yarn.lock
+
+# Config files with sensitive data
+config/config.json
+**/config.json
+
+# Logs
+logs/
+*.log
+
