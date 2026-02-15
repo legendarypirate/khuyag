@@ -440,6 +440,159 @@ db.fixUserTable = async function() {
   }
 };
 
+// ====== FIX CREATED_AT COLUMNS ======
+db.fixCreatedAtColumns = async function() {
+  try {
+    console.log('🔧 Checking created_at columns...');
+    
+    // Tables that should have created_at columns based on model definitions
+    // Note: artists table uses camelCase (createdAt) because underscored: false
+    const tablesWithCreatedAt = [
+      { table: 'users', column: 'created_at' },
+      { table: 'products', column: 'created_at' },
+      { table: 'product_variations', column: 'created_at' },
+      { table: 'cart_items', column: 'created_at' },
+      { table: 'orders', column: 'created_at' },
+      { table: 'order_items', column: 'created_at' },
+      { table: 'artists', column: 'createdAt' }, // Has timestamps:true, underscored: false (camelCase)
+      { table: 'artist_reviews', column: 'createdAt' }, // Has timestamps:true, underscored: false (camelCase)
+      { table: 'reviews', column: 'created_at' }
+    ];
+    
+    for (const { table, column } of tablesWithCreatedAt) {
+      try {
+        // Check if table exists
+        const [tableExists] = await this.sequelize.query(`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = '${table}'
+          )
+        `);
+        
+        if (!tableExists[0].exists) {
+          console.log(`ℹ️ Table ${table} does not exist yet, will be created by sync`);
+          continue;
+        }
+        
+        // Check if column exists (check both snake_case and camelCase)
+        // Note: PostgreSQL's information_schema.columns stores unquoted identifiers in lowercase
+        // So "createdAt" becomes "createdat" and "created_at" stays "created_at"
+        // We need to query pg_attribute to get the actual column name with proper casing
+        const [columns] = await this.sequelize.query(`
+          SELECT 
+            a.attname as column_name,
+            t.typname as data_type
+          FROM pg_attribute a
+          JOIN pg_class c ON a.attrelid = c.oid
+          JOIN pg_type t ON a.atttypid = t.oid
+          WHERE c.relname = '${table}'
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+          AND (LOWER(a.attname) = LOWER('${column}') OR LOWER(a.attname) = 'createdat')
+        `);
+        
+        const hasCreatedAt = columns.some(col => 
+          col.column_name.toLowerCase() === column.toLowerCase() || 
+          col.column_name.toLowerCase() === 'createdat'
+        );
+        
+        if (!hasCreatedAt) {
+          console.log(`⚠️ Adding missing ${column} column to ${table}...`);
+          // Quote column name if it's camelCase
+          const quotedColumn = column.includes('_') ? column : `"${column}"`;
+          await this.sequelize.query(`
+            ALTER TABLE ${table} 
+            ADD COLUMN ${quotedColumn} TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          `);
+          console.log(`✅ Added ${column} column to ${table}`);
+        } else {
+          // Find the actual column name (could be createdAt, created_at, etc.)
+          // Use the actual column name from pg_attribute which preserves case
+          const actualCol = columns.find(col => 
+            col.column_name.toLowerCase() === column.toLowerCase() || 
+            col.column_name.toLowerCase() === 'createdat'
+          );
+          let actualColName = actualCol ? actualCol.column_name : column;
+          
+          // Check if we need to rename the column to match the expected format
+          const expectedIsSnakeCase = column.includes('_');
+          const expectedIsCamelCase = !expectedIsSnakeCase && column !== column.toLowerCase();
+          const actualColLower = actualColName.toLowerCase();
+          const expectedColLower = column.toLowerCase();
+          
+          // Case 1: Expected camelCase (createdAt) but have lowercase (createdat)
+          if (expectedIsCamelCase && actualColLower === 'createdat' && actualColName !== column) {
+            console.log(`⚠️ Renaming ${actualColName} to "${column}" in ${table} to match model definition...`);
+            try {
+              await this.sequelize.query(`
+                ALTER TABLE ${table} 
+                RENAME COLUMN ${actualColName} TO "${column}"
+              `);
+              console.log(`✅ Renamed ${actualColName} to "${column}" in ${table}`);
+              actualColName = column; // Update to use the renamed column
+            } catch (renameError) {
+              console.log(`ℹ️ Could not rename column: ${renameError.message}`);
+            }
+          }
+          // Case 2: Expected snake_case but have camelCase
+          else if (expectedIsSnakeCase && actualColLower === 'createdat' && actualColName !== column) {
+            const camelCaseCol = columns.find(col => col.column_name.toLowerCase() === 'createdat');
+            const camelCaseColName = camelCaseCol.column_name; // Preserve original case
+            console.log(`⚠️ Renaming "${camelCaseColName}" to ${column} in ${table} to match model definition...`);
+            try {
+              await this.sequelize.query(`
+                ALTER TABLE ${table} 
+                RENAME COLUMN "${camelCaseColName}" TO ${column}
+              `);
+              console.log(`✅ Renamed "${camelCaseColName}" to ${column} in ${table}`);
+              actualColName = column; // Update to use the renamed column
+            } catch (renameError) {
+              console.log(`ℹ️ Could not rename column: ${renameError.message}`);
+            }
+          }
+          
+          // Check for null values and fix them
+          try {
+            // Determine if we need to quote the column name
+            // Quote if: camelCase (has uppercase) OR if it matches the expected camelCase column name
+            // Don't quote if: snake_case or lowercase
+            const needsQuotes = actualColName !== actualColName.toLowerCase() || 
+                               (!actualColName.includes('_') && column !== column.toLowerCase());
+            const quotedColName = needsQuotes ? `"${actualColName}"` : actualColName;
+            
+            const [nullCount] = await this.sequelize.query(`
+              SELECT COUNT(*)::int as count 
+              FROM ${table} 
+              WHERE ${quotedColName} IS NULL
+            `);
+            
+            const nullRows = parseInt(nullCount[0]?.count || 0);
+            if (nullRows > 0) {
+              console.log(`⚠️ Found ${nullRows} rows with null ${actualColName} in ${table}, fixing...`);
+              await this.sequelize.query(`
+                UPDATE ${table} 
+                SET ${quotedColName} = CURRENT_TIMESTAMP 
+                WHERE ${quotedColName} IS NULL
+              `);
+              console.log(`✅ Fixed ${nullRows} null values in ${table}.${actualColName}`);
+            } else {
+              console.log(`✅ ${table}.${actualColName} has no null values`);
+            }
+          } catch (nullFixError) {
+            console.log(`ℹ️ Could not check/fix null values for ${table}.${actualColName}: ${nullFixError.message}`);
+          }
+        }
+      } catch (error) {
+        console.log(`ℹ️ Could not check/add ${column} for ${table}: ${error.message}`);
+      }
+    }
+    
+  } catch (error) {
+    console.error('❌ Error fixing created_at columns:', error.message);
+    // Don't throw, just log - this is a helper function
+  }
+};
+
 // ====== FIX SUPERVISOR_ID COLUMN TYPE ======
 db.fixSupervisorIdColumn = async function() {
   try {

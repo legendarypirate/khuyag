@@ -41,11 +41,29 @@ async function syncDatabase() {
     // First, fix the supervisor_id column type issue
     await db.fixSupervisorIdColumn();
     
+    // Fix missing created_at columns before syncing
+    await db.fixCreatedAtColumns();
+    
     // Then sync the database
     await db.sequelize.sync({ alter: true });
     console.log("Synced db.");
   } catch (err) {
-    console.log("Failed to sync db: " + err.message);
+    // If error is about missing created_at column, try to fix it and retry
+    if (err.message && err.message.includes('created_at') && err.message.includes('does not exist')) {
+      console.log("⚠️ Detected missing created_at column during sync, attempting to fix...");
+      try {
+        // Run fix again to catch any tables we might have missed
+        await db.fixCreatedAtColumns();
+        // Retry sync
+        await db.sequelize.sync({ alter: true });
+        console.log("✅ Synced db after fixing created_at columns.");
+      } catch (retryErr) {
+        console.log("Failed to sync db after retry: " + retryErr.message);
+        console.error("Full error:", retryErr);
+      }
+    } else {
+      console.log("Failed to sync db: " + err.message);
+    }
   }
 }
 

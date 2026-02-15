@@ -74,7 +74,7 @@ module.exports = (sequelize, Sequelize) => {
         fields: ['rating']
       },
       {
-        fields: ['created_at']
+        fields: ['createdAt']
       }
     ]
   });

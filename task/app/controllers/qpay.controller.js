@@ -4,8 +4,8 @@ const OrderItem = db.order_items;
 const axios = require('axios');
 
 // QPay credentials - should be in environment variables
-const QPAY_LOGIN = process.env.QPAY_LOGIN || 'KONO';
-const QPAY_PASSWORD = process.env.QPAY_PASSWORD || '8zcSjp5u';
+const QPAY_LOGIN = process.env.QPAY_LOGIN || 'wqwq';
+const QPAY_PASSWORD = process.env.QPAY_PASSWORD || 'wqwq';
 const QPAY_BASE_URL = 'https://merchant.qpay.mn/v2';
 
 // Get QPay access token
